@@ -1,0 +1,1 @@
+# Reference: https://github.com/yunjey/pytorch-tutorial/blob/master/tutorials/02-intermediate/bidirectional_recurrent_neural_network/main.py#L39-L58

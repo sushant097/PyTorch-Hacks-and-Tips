@@ -162,8 +162,8 @@ class LitResnet(pl.LightningModule):
         sn.set(font_scale=1.2)
         sn.heatmap(df_cm, annot=True, annot_kws={"size": 16}, fmt='d', ax=ax)
         ax.legend(
-            index=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-            columns=['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'],
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'],
             handler_map={int: IntHandler()},
             loc='upper left',
             bbox_to_anchor=(1.2, 1)

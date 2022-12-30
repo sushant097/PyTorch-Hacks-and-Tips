@@ -23,7 +23,6 @@ import io
 from PIL import Image
 from datetime import datetime
 
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -39,11 +38,11 @@ class IntHandler:
 class LitResnet(pl.LightningModule):
 
     def __init__(
-        self,
-        model_name='resnet18',
-        num_classes=6,
-        hidden_size=64,
-        lr=0.05,
+            self,
+            model_name='resnet18',
+            num_classes=6,
+            hidden_size=64,
+            lr=0.05,
     ):
         super().__init__()
 
@@ -67,7 +66,6 @@ class LitResnet(pl.LightningModule):
             nn.Dropout(0.1),
             nn.Linear(hidden_size, self.num_classes),
         )
-
 
         # for averaging loss across batches
         self.train_loss = MeanMetric()
@@ -135,7 +133,6 @@ class LitResnet(pl.LightningModule):
         return {"loss": loss, "preds": preds, "targets": targets}
 
     def validation_epoch_end(self, outs: List[Any]):
-
         "Optional - Logging Confusion matrix image in Tensorboard"
         ######
         # Reference logging confusion matrix in tensorboard: https://stackoverflow.com/a/73388839/7338066
@@ -202,11 +199,11 @@ class LitResnet(pl.LightningModule):
 
 class IntelClassificationDataModule(pl.LightningDataModule):
     def __init__(
-        self,
-        data_dir: str = "dataset/",
-        batch_size: int = 256 if torch.cuda.is_available() else 64,
-        num_workers: int = 0,
-        pin_memory: bool = False,
+            self,
+            data_dir: str = "dataset/",
+            batch_size: int = 256 if torch.cuda.is_available() else 64,
+            num_workers: int = 0,
+            pin_memory: bool = False,
     ):
         super().__init__()
 
@@ -223,7 +220,7 @@ class IntelClassificationDataModule(pl.LightningDataModule):
         self.transforms = T.Compose([
             T.RandomRotation(degrees=66),
             T.RandomHorizontalFlip(p=0.5),
-            T.ColorJitter(brightness=(0.1,0.6), contrast=1,saturation=0, hue=0.4),
+            T.ColorJitter(brightness=(0.1, 0.6), contrast=1, saturation=0, hue=0.4),
             T.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5)),
             # T.Resize((224, 224)), # not needed for MNIST
             T.ToTensor(),
@@ -310,8 +307,7 @@ def train_and_evaluate(model, datamodule):
     # test on the test dataset
     # calculating evaluation metrics
 
-
-    idx_to_class = {k: v for v,k in datamodule.mnist_train.class_to_idx.items()}
+    idx_to_class = {i: str(i) for i in range(10)}
     model.idx_to_class = idx_to_class
 
     # calculating per class accuracy
@@ -356,17 +352,15 @@ def save_scripted_model(model):
     script = model.to_torchscript()
 
     # save for use in production environment
-    torch.jit.save(script,"model.scripted.pt")
+    torch.jit.save(script, "model.scripted.pt")
 
 
 if __name__ == '__main__':
-
     datamodule = IntelClassificationDataModule(data_dir="../dataset/MNIST", num_workers=2)
     datamodule.setup()
 
     model = LitResnet(model_name='resnet18', num_classes=10)
     # model = model.to(device)
-
 
     print(":: Training ...")
     train_and_evaluate(model, datamodule)

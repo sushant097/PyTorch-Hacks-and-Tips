@@ -9,9 +9,7 @@ import json
 import pytorch_lightning as pl
 import torchvision.transforms as T
 
-from pathlib import Path
-from torchvision.datasets import ImageFolder
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, random_split
 from torchmetrics import F1Score, Precision, Recall, ConfusionMatrix, MaxMetric, MeanMetric
 from torchmetrics.classification.accuracy import Accuracy
 from pytorch_lightning import loggers as pl_loggers
@@ -44,6 +42,7 @@ class LitResnet(pl.LightningModule):
         self,
         model_name='resnet18',
         num_classes=6,
+        hidden_size=64,
         lr=0.05,
     ):
         super().__init__()
@@ -53,6 +52,10 @@ class LitResnet(pl.LightningModule):
         self.save_hyperparameters()
 
         self.num_classes = num_classes
+
+        # Hardcode some dataset specific attributes
+        self.dims = (1, 28, 28)
+        channels, width, height = self.dims
 
         self.net = nn.Sequential(
             nn.Flatten(),
@@ -223,7 +226,6 @@ class IntelClassificationDataModule(pl.LightningDataModule):
             T.ColorJitter(brightness=(0.1,0.6), contrast=1,saturation=0, hue=0.4),
             T.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5)),
             # T.Resize((224, 224)), # not needed for MNIST
-            T.RandomCrop(size=(128, 128)),
             T.ToTensor(),
             T.Normalize((0.1307,), (0.3081,)),
         ])
@@ -231,14 +233,6 @@ class IntelClassificationDataModule(pl.LightningDataModule):
         self.mnist_train: Optional[Dataset] = None
         self.mnist_valid: Optional[Dataset] = None
         self.mnist_test: Optional[Dataset] = None
-
-    @property
-    def num_classes(self):
-        return len(self.data_train.classes)
-
-    @property
-    def classes(self):
-        return self.data_train.classes
 
     def prepare_data(self):
         """Download data if needed.
@@ -255,12 +249,12 @@ class IntelClassificationDataModule(pl.LightningDataModule):
         """
         # Assign train/val datasets for use in dataloaders
         if stage == "fit" or stage is None:
-            mnist_full = MNIST(self.data_dir, train=True, transform=self.transform)
+            mnist_full = MNIST(self.data_dir, train=True, transform=self.transforms, download=True)
             self.mnist_train, self.mnist_val = random_split(mnist_full, [55000, 5000])
 
         # Assign test dataset for use in dataloader(s)
         if stage == "test" or stage is None:
-            self.mnist_test = MNIST(self.data_dir, train=False, transform=self.transform)
+            self.mnist_test = MNIST(self.data_dir, train=False, transform=self.transforms, download=True)
 
     def train_dataloader(self):
         return DataLoader(
@@ -317,18 +311,17 @@ def train_and_evaluate(model, datamodule):
     # calculating evaluation metrics
 
 
-    idx_to_class = {k: v for v,k in datamodule.data_train.class_to_idx.items()}
+    idx_to_class = {k: v for v,k in datamodule.mnist_train.class_to_idx.items()}
     model.idx_to_class = idx_to_class
 
     # calculating per class accuracy
-    nb_classes = datamodule.num_classes
+    nb_classes = 10
 
     confusion_matrix = torch.zeros(nb_classes, nb_classes)
     acc_all = 0
     with torch.no_grad():
         for i, (images, targets) in enumerate(datamodule.test_dataloader()):
-            # images = images.to(device)
-            # targets = targets.to(device)
+
             outputs = model(images)
             _, preds = torch.max(outputs, 1)
             for t, p in zip(targets.view(-1), preds.view(-1)):
@@ -368,10 +361,10 @@ def save_scripted_model(model):
 
 if __name__ == '__main__':
 
-    datamodule = IntelClassificationDataModule(data_dir="../dataset", num_workers=2)
+    datamodule = IntelClassificationDataModule(data_dir="../dataset/MNIST", num_workers=2)
     datamodule.setup()
 
-    model = LitResnet(model_name='resnet18', num_classes=datamodule.num_classes)
+    model = LitResnet(model_name='resnet18', num_classes=10)
     # model = model.to(device)
 
 

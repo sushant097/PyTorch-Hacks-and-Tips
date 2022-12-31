@@ -7,88 +7,118 @@ import os
 from torch import nn
 from torch.nn import functional as F
 from torch.utils.data import TensorDataset, DataLoader, random_split
+from torchmetrics import Accuracy
 from torchvision.datasets import MNIST
 from torchvision import datasets, transforms
 
-from pytorch_lightning.callbacks import EarlyStopping, LearningRateLogger, ModelCheckpoint
+from pytorch_lightning.callbacks.progress import TQDMProgressBar
+from pytorch_lightning import loggers as pl_loggers
 
 
-class LightningMNISTClassifier(pl.LightningModule):
+class LitMNIST(pl.LightningModule):
+    def __init__(self, data_dir="./data", hidden_size=64, learning_rate=2e-4):
 
-  def __init__(self, lr_rate):
-    super(LightningMNISTClassifier, self).__init__()
-    
-    # mnist images are (1, 28, 28) (channels, width, height) 
-    self.layer_1 = torch.nn.Linear(28 * 28, 128)
-    self.layer_2 = torch.nn.Linear(128, 256)
-    self.layer_3 = torch.nn.Linear(256, 10)
-    self.lr_rate = lr_rate
+        super().__init__()
 
-  def forward(self, x):
-      batch_size, channels, width, height = x.size()
-      
-      # (b, 1, 28, 28) -> (b, 1*28*28)
-      x = x.view(batch_size, -1)
+        # Set our init args as class attributes
+        self.data_dir = data_dir
+        self.hidden_size = hidden_size
+        self.learning_rate = learning_rate
 
-      # layer 1 (b, 1*28*28) -> (b, 128)
-      x = self.layer_1(x)
-      x = torch.relu(x)
+        # Hardcode some dataset specific attributes
+        self.num_classes = 10
+        self.dims = (1, 28, 28)
+        channels, width, height = self.dims
+        self.transform = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize((0.1307,), (0.3081,)),
+            ]
+        )
 
-      # layer 2 (b, 128) -> (b, 256)
-      x = self.layer_2(x)
-      x = torch.relu(x)
+        # Define PyTorch model
+        self.model = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(channels * width * height, hidden_size),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(hidden_size, self.num_classes),
+        )
 
-      # layer 3 (b, 256) -> (b, 10)
-      x = self.layer_3(x)
+        self.val_accuracy = Accuracy()
+        self.test_accuracy = Accuracy()
 
-      # probability distribution over labels
-      x = torch.softmax(x, dim=1)
+    def forward(self, x):
+        x = self.model(x)
+        return F.log_softmax(x, dim=1)
 
-      return x
+    def training_step(self, batch, batch_idx):
+        x, y = batch
+        logits = self(x)
+        loss = F.nll_loss(logits, y)
+        return loss
 
-  def cross_entropy_loss(self, logits, labels):
-    return F.nll_loss(logits, labels)
+    def validation_step(self, batch, batch_idx):
+        x, y = batch
+        logits = self(x)
+        loss = F.nll_loss(logits, y)
+        preds = torch.argmax(logits, dim=1)
+        self.val_accuracy.update(preds, y)
 
-  def training_step(self, train_batch, batch_idx):
-      x, y = train_batch
-      logits = self.forward(x)
-      loss = self.cross_entropy_loss(logits, y)
+        # Calling self.log will surface up scalars for you in TensorBoard
+        self.log("val_loss", loss, prog_bar=True)
+        self.log("val_acc", self.val_accuracy, prog_bar=True)
 
-      logs = {'train_loss': loss}
-      return {'loss': loss, 'log': logs}
+    def test_step(self, batch, batch_idx):
+        x, y = batch
+        logits = self(x)
+        loss = F.nll_loss(logits, y)
+        preds = torch.argmax(logits, dim=1)
+        self.test_accuracy.update(preds, y)
 
-  def validation_step(self, val_batch, batch_idx):
-      x, y = val_batch
-      logits = self.forward(x)
-      loss = self.cross_entropy_loss(logits, y)
-      return {'val_loss': loss}
+        # Calling self.log will surface up scalars for you in TensorBoard
+        self.log("test_loss", loss, prog_bar=True)
+        self.log("test_acc", self.test_accuracy, prog_bar=True)
 
-  def test_step(self, val_batch, batch_idx):
-      x, y = val_batch
-      logits = self.forward(x)
-      loss = self.cross_entropy_loss(logits, y)
-      return {'test_loss': loss}
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
+        return optimizer
 
-  def validation_epoch_end(self, outputs):
-      avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
-      tensorboard_logs = {'val_loss': avg_loss}
-      return {'avg_val_loss': avg_loss, 'log': tensorboard_logs}
+    ####################
+    # DATA RELATED HOOKS
+    ####################
 
-  def test_epoch_end(self, outputs):
-      avg_loss = torch.stack([x['test_loss'] for x in outputs]).mean()
-      tensorboard_logs = {'test_loss': avg_loss}
-      return {'avg_test_loss': avg_loss, 'log': tensorboard_logs}
+    def prepare_data(self):
+        # download
+        MNIST(self.data_dir, train=True, download=True)
+        MNIST(self.data_dir, train=False, download=True)
 
-  def configure_optimizers(self):
-    optimizer = torch.optim.Adam(self.parameters(), lr=self.lr_rate)
-    lr_scheduler = {'scheduler': torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma = 0.95),
-                    'name': 'expo_lr'}
-    return [optimizer], [lr_scheduler]
+    def setup(self, stage=None):
 
+        # Assign train/val datasets for use in dataloaders
+        if stage == "fit" or stage is None:
+            mnist_full = MNIST(self.data_dir, train=True, transform=self.transform)
+            self.mnist_train, self.mnist_val = random_split(mnist_full, [55000, 5000])
+
+        # Assign test dataset for use in dataloader(s)
+        if stage == "test" or stage is None:
+            self.mnist_test = MNIST(self.data_dir, train=False, transform=self.transform)
+
+    def train_dataloader(self):
+        return DataLoader(self.mnist_train, batch_size=BATCH_SIZE)
+
+    def val_dataloader(self):
+        return DataLoader(self.mnist_val, batch_size=BATCH_SIZE)
+
+    def test_dataloader(self):
+        return DataLoader(self.mnist_test, batch_size=BATCH_SIZE)
 
 
 # Custom Callbacks
-class MyPrintingCallback(pl.callbacks.base.Callback):
+class MyPrintingCallback(pl.callbacks.Callback):
 
     def on_init_start(self, trainer):
         print('Starting to init trainer!')
@@ -99,3 +129,24 @@ class MyPrintingCallback(pl.callbacks.base.Callback):
     def on_train_end(self, trainer, pl_module):
         print('do something when training ends')
 
+BATCH_SIZE = 256 if torch.cuda.is_available() else 64
+model = LitMNIST()
+
+tb_logger = pl_loggers.TensorBoardLogger(save_dir="logs")
+
+
+trainer = pl.Trainer(
+    accelerator="auto",
+    devices=1 if torch.cuda.is_available() else None,  # limiting got iPython runs
+    max_epochs=3,
+    callbacks=[TQDMProgressBar(refresh_rate=20), MyPrintingCallback()],
+    logger=[tb_logger],
+)
+# train the model
+trainer.fit(model)
+
+# save the model
+torch.save(model, "model.pt")
+
+# test the trained model
+trainer.test(model)

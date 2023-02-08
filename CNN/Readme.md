@@ -1,4 +1,4 @@
-## Transer Learning
+## CNN Classification and Transer Learning
 
 In this tutorial, we see how the transfer learning done with PyTorch. Simple pretrained resnet18 model helps to learn in different dataset in much faster way.
 

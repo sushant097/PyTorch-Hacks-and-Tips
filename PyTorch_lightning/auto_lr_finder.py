@@ -17,6 +17,7 @@ PATH_DATASETS = os.environ.get("PATH_DATASETS", ".")
 BATCH_SIZE = 256 if torch.cuda.is_available() else 64
 
 class MNISTModel(pl.LightningModule):
+    "Actual Model"
     def __init__(self, lr=0.001):
         super().__init__()
         self.save_hyperparameters(logger=False, ignore=["net"])
@@ -40,6 +41,7 @@ class MNISTModel(pl.LightningModule):
         return torch.optim.Adam(self.parameters(), lr=self.lr)
     
 class MNISTDataModule(pl.LightningDataModule):
+    "Data Module"
     def __init__(self, data_dir: str = PATH_DATASETS):
         super().__init__()
         self.data_dir = data_dir

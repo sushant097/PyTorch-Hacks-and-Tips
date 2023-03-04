@@ -10,3 +10,4 @@ This repository contains PyTorch and PyTorch Lightning hacks and tricks. Also ad
 * [Pytorch Lightning](PyTorch_lightning/)
 * [Extra Notebooks](notebooks/)
 
+Please let me know any correction to : sushantgautm@gmail[dot]com.

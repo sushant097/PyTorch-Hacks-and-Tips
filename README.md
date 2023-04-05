@@ -1,5 +1,5 @@
 # PyTorch-Hacks-and-Tips
-This repository contains PyTorch and PyTorch Lightning hacks and tricks. Also advanced PyTorch usage is covered in some examples.
+This repository contains PyTorch and PyTorch Lightning hacks and tricks. Also, advanced PyTorch usage is covered in some examples. This is useful for beginners and for those looking for advanced uses.
 
 # Contents
 * [Linear Regression](LinearRegression/)
